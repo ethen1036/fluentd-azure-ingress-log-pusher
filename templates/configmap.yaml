@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fluentd-azure.fullname" . }}
+  namespace: {{ .Values.namespace }}
+data:
+  fluent.conf: |
+    <source>
+      @type tail
+      path /var/log/containers/*nginx-ingress-ingress-nginx-controller*.log
+      pos_file {{ .Values.fluentd.posFilePath }}
+      tag kubernetes.nginx.ingress
+      read_from_head true
+      <parse>
+        @type multi_format
+        <pattern>
+          format regexp
+          expression /^(?<time>.+) (?<stream>stdout|stderr)( (?<logtag>.))? (?<remote_addr>[^ ]+) "(?<geoip_country_name>[^"]*)" (?<remote_user>\S+) "(?<timestamp>[^"]*)" "(?<request>[^"]*)" (?<status>\S+) (?<body_bytes_sent>\S+) "(?<http_referer>[^"]*)" "(?<http_user_agent>[^"]*)" "(?<http_x_forwarded_for>[^"]*)" "(?<request_body>[^"]*)" "(?<http_Authorization>[^"]*)" "(?<http_x_duid>[^"]*)" "(?<http_x_ver>[^"]*)" "(?<upstream_http_x_rqid>[^"]*)" (?<request_time>\S+) (?<upstream_connect_time>\S+) (?<upstream_header_time>\S+) (?<upstream_response_time>\S+) "(?<upstream_addr>[^"]*)" "(?<server_name>[^"]+)" "(?<http_x_encrypted>[^"]+)" "(?<greedyData1>[^"]+)" "(?<greedyData2>[^"]+)"$/
+          time_key time
+          keep_time_key true
+        </pattern>
+      </parse>
+      emit_unmatched_lines true
+    </source>
+
+    <filter kubernetes.nginx.ingress>
+      @type kubernetes_metadata
+      kubernetes_url https://kubernetes.default.svc
+      cache_size 1000
+      watch false
+    </filter>
+
+    <match kubernetes.nginx.ingress>
+      @type azure-storage-append-blob
+      azure_storage_account    "#{ENV['FLUENT_AZURE_STORAGE_ACCOUNT']}"
+      azure_storage_access_key "#{ENV['FLUENT_AZURE_STORAGE_ACCESS_KEY']}"
+      azure_container         {{ .Values.azure.container }}
+      auto_create_container   {{ .Values.azure.autoCreateContainer }}
+      compress                {{ .Values.azure.compress }}
+      azure_object_key_format %{time_slice}-%{index}.log.gz
+      time_slice_format       {{ .Values.azure.timeSliceFormat }}
+      
+      <buffer>
+        @type file
+        path {{ .Values.fluentd.bufferPath }}
+        timekey {{ .Values.fluentd.timeKey }}
+        timekey_wait {{ .Values.fluentd.timeKeyWait }}
+        timekey_use_utc true
+        retry_forever true
+        retry_max_interval 30
+        retry_type exponential_backoff
+        retry_wait 1s 
+        flush_at_shutdown true
+      </buffer>
+    </match>

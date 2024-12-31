@@ -1,0 +1,30 @@
+image:
+  repository: fluent/fluentd-kubernetes-daemonset
+  tag: v1.17.1-debian-azureblob-1.0
+  pullPolicy: IfNotPresent
+
+resources:
+  limits:
+    memory: 500Mi
+  requests:
+    cpu: 100m
+    memory: 200Mi
+
+azure:
+  storageAccount: logbucket
+  container: nginx-ingress-logs
+  autoCreateContainer: true
+  compress: true
+  timeSliceFormat: "%Y%m%d-%H"
+
+fluentd:
+  posFilePath: /var/log/nginx-ingress.log.pos
+  bufferPath: /var/log/fluent/azurestorage
+  timeKey: 24h
+  timeKeyWait: 300
+
+tolerations:
+  - key: node-role.kubernetes.io/master
+    effect: NoSchedule
+
+namespace: monitoring
